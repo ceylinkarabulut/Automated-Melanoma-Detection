@@ -1,0 +1,5 @@
+Ceylin: feature extraction, main, maybe evaluation
+idil: Preprocessing
+Metin: Patch enhancement
+Kutay: dataset
+Altogether: bovw
