@@ -2,15 +2,16 @@
 import os
 import cv2
 import numpy as np
+import config
 from dataset import class_counts
 
 
 def augment_image(img: np.ndarray, mask: np.ndarray, seed: int) -> tuple[np.ndarray, np.ndarray]:
     rng = np.random.default_rng(seed)
-    angle = rng.uniform(-270, 270)
-    scale = rng.uniform(0.8, 1.2)
-    shift_x = rng.uniform(-0.1, 0.1)
-    shift_y = rng.uniform(-0.1, 0.1)
+    angle = rng.uniform(-config.AUG_ROTATION, config.AUG_ROTATION)
+    scale = rng.uniform(1 - config.AUG_ZOOM, 1 + config.AUG_ZOOM)
+    shift_x = rng.uniform(-config.AUG_SHIFT, config.AUG_SHIFT)
+    shift_y = rng.uniform(-config.AUG_SHIFT, config.AUG_SHIFT)
     height, width = img.shape[:2]
     center = (width / 2, height / 2)
     M = cv2.getRotationMatrix2D(center, angle, scale)
