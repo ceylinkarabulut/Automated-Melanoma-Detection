@@ -75,7 +75,6 @@ def images_to_features(triples, model, preprocess):
 
     return image_features, image_labels
 
-
 def flatten_patch_features(image_features, image_labels):
     all_features = np.concatenate(image_features, axis=0)
     all_patch_labels = np.concatenate([
