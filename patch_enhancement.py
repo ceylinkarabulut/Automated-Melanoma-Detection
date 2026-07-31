@@ -7,14 +7,14 @@ import numpy as np
 def compute_pca_map(patch):
     """-> (n,n,3) float [0,1], 1'den çıkarılmış"""
     h, w, c = patch.shape
-    # Renk kanallarını vektörlere dönüştürerek matris sütunları halinde istifle[cite: 1]
+    # Renk kanallarını vektörlere dönüştürerek matris sütunları halinde istifle
     pixels = patch.reshape(-1, c).astype(np.float32)
 
-    # PCA gözlem skorlarını hesapla[cite: 1]
+    # PCA gözlem skorlarını hesapla
     mean, eigenvectors = cv2.PCACompute(pixels, mean=None)
     scores = np.dot(pixels - mean, eigenvectors.T)
 
-    # Her bir skor vektörünü [0, 1] aralığına doğrusal olarak normalize et[cite: 1]
+    # Her bir skor vektörünü [0, 1] aralığına doğrusal olarak normalize et
     scores_min = np.min(scores, axis=0)
     scores_max = np.max(scores, axis=0)
 
@@ -22,7 +22,7 @@ def compute_pca_map(patch):
     diff[diff == 0] = 1.0  # Sıfıra bölünmeyi engelle
     normalized_scores = (scores - scores_min) / diff
 
-    # Daha az baskın piksellere daha büyük ağırlık vermek için değerleri 1'den çıkar[cite: 1]
+    # Daha az baskın piksellere daha büyük ağırlık vermek için değerleri 1'den çıkar
     pca_map = 1.0 - normalized_scores
     return pca_map.reshape(h, w, c)
 
@@ -31,13 +31,13 @@ def compute_bri_map(patch):
     """-> (n,n,3) float [0,1], ters çevrilmez"""
     patch_float = patch.astype(np.float32)
 
-    # Konumdaki renk kanallarının ortalamasını al[cite: 1]
+    # Konumdaki renk kanallarının ortalamasını al
     mean_channels = np.mean(patch_float, axis=2, keepdims=True)
 
-    # Pikselin parlaklığını, ortalamadan olan mutlak fark (absolute disparity) olarak belirle[cite: 1]
+    # Pikselin parlaklığını, ortalamadan olan mutlak fark (absolute disparity) olarak belirle[
     bri_map = np.abs(patch_float - mean_channels)
 
-    # Her bir renk kanalı için haritayı [0, 1] aralığına doğrusal olarak normalize et[cite: 1]
+    # Her bir renk kanalı için haritayı [0, 1] aralığına doğrusal olarak normalize et
     for i in range(3):
         c_min = np.min(bri_map[:, :, i])
         c_max = np.max(bri_map[:, :, i])
