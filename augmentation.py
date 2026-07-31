@@ -34,7 +34,7 @@ def balance_train_set(samples: list[tuple[str, str, int]], out_dir: str, seed: i
         source = melanoma_samples[i % len(melanoma_samples)]
         image_path, mask_path, label = source
         img = cv2.imread(image_path)
-        mask = cv2.imread(mask_path)
+        mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
         aug_img, aug_mask = augment_image(img, mask, seed + i)
         copy_number = i // len(melanoma_samples)
         filename = os.path.basename(image_path)
