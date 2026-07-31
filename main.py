@@ -3,35 +3,72 @@
 Planlanan sıra:
     1. load_split ile train ve test yüklenir
     2. balance_train_set SADECE train'e uygulanır
-    3. Her görüntü: rescale -> extract_patches -> enhance_patch -> extract_features
+    3. Her görüntü: imread -> rescale -> extract_patches -> enhance_patch -> extract_features
     4. train_dictionary SADECE train feature'larıyla eğitilir
     5. build_histogram ile her görüntü K boyutlu vektöre indirgenir
     6. train_svm SADECE train ile eğitilir
     7. compute_metrics SADECE test üzerinde çalıştırılır
 """
 
+import os
+
+import cv2
 import numpy as np
 
 import config
 from augmentation import balance_train_set
 from dataset import load_split
 from preprocessing import rescale_image, extract_patches
-from patch_enhancement import enhance_patch
+from patch_enhancement import (
+    compute_pca_map,
+    compute_bri_map,
+    compute_sat_map,
+    enhance_patch,
+)
 from feature_extraction import build_model, build_preprocess, extract_features
 from bovw import train_dictionary, build_histogram
-from classifier import train_svm
+from classifier import train_svm, predict
 from evaluation import compute_metrics
+
+# config.ENHANCEMENT_MAPS içindeki isimleri gerçek harita fonksiyonlarına bağlar
+MAP_FUNCTIONS = {
+    "pca": compute_pca_map,
+    "bri": compute_bri_map,
+    "sat": compute_sat_map,
+}
+
+
+def compute_maps_for_patch(patch, map_names):
+    """map_names (config.ENHANCEMENT_MAPS) -> [harita_array, ...] (enhance_patch'in beklediği format)"""
+    return [MAP_FUNCTIONS[name](patch) for name in map_names]
+
+
+def load_image_and_mask(image_path, mask_path):
+    image = cv2.imread(image_path)
+    mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+    if image is None:
+        raise FileNotFoundError(f"Görüntü okunamadı: {image_path}")
+    if mask is None:
+        raise FileNotFoundError(f"Maske okunamadı: {mask_path}")
+    return image, mask
 
 
 def images_to_features(triples, model, preprocess):
     image_features = []
     image_labels = []
 
-    for image, mask, label in triples:
-        image = rescale_image(image)
-        patches = extract_patches(image, mask=mask)
-        enhanced_patches = [enhance_patch(p) for p in patches]
-        features = extract_features(enhanced_patches, model, preprocess, config.FEATURE_BATCH_SIZE)
+    for image_path, mask_path, label in triples:
+        image, mask = load_image_and_mask(image_path, mask_path)
+
+        image = rescale_image(image, config.MH_LONG_SIDE, is_mask=False)
+        mask = rescale_image(mask, config.MH_LONG_SIDE, is_mask=True)
+
+        patches = extract_patches(image, mask, config.PATCH_SIZE, config.STRIDE, config.LESION_THRESHOLD)
+        enhanced_patches = [
+            enhance_patch(p, compute_maps_for_patch(p, config.ENHANCEMENT_MAPS))
+            for p in patches
+        ]
+        features = extract_features(enhanced_patches, model, preprocess, config.BATCH_SIZE)
 
         image_features.append(features)
         image_labels.append(label)
@@ -55,10 +92,11 @@ def build_histograms(image_features, centers):
 
 
 def main():
-    train_data = load_split("train")
-    test_data = load_split("test")
+    train_data = load_split(config.TRAIN_CSV, config.IMAGE_DIR, config.MASK_DIR)
+    test_data = load_split(config.TEST_CSV, config.IMAGE_DIR, config.MASK_DIR)
 
-    train_data = balance_train_set(train_data)
+    os.makedirs(config.AUG_DIR, exist_ok=True)
+    train_data = balance_train_set(train_data, config.AUG_DIR, config.SEED)
 
     model = build_model()
     preprocess = build_preprocess()
@@ -69,7 +107,7 @@ def main():
     # train_dictionary artık tüm train patch'lerini + patch-bazlı etiketleri
     # TEK array olarak bekliyor (ayrımı fonksiyonun içinde kendisi yapıyor!! :3 )
     all_train_features, all_train_patch_labels = flatten_patch_features(train_features, train_labels)
-    centers = train_dictionary(all_train_features, all_train_patch_labels, k=config.K)
+    centers = train_dictionary(all_train_features, all_train_patch_labels, k=config.K_CLUSTERS)
 
     X_train = build_histograms(train_features, centers)
     y_train = np.array(train_labels)
@@ -77,10 +115,9 @@ def main():
     X_test = build_histograms(test_features, centers)
     y_test = np.array(test_labels)
 
-    svm_model = train_svm(X_train, y_train)
+    svm_model = train_svm(X_train, y_train, config.SVM_C, config.SVM_GAMMA)
 
-    y_pred = svm_model.predict(X_test)
-    y_scores = svm_model.predict_proba(X_test)[:, 1]  # malignant sınıfının olasılığı
+    y_pred, y_scores = predict(svm_model, X_test)
     metrics = compute_metrics(y_test, y_pred, y_scores)
 
     print(metrics)

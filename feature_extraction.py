@@ -8,10 +8,12 @@ from torchvision import transforms
 
 
 def build_model():
-    """ResNet-101 pretrained, fc=Identity(), eval() -> model"""
+    """ResNet-101 pretrained, fc=Identity(), eval(), GPU varsa GPU'da -> model"""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = models.resnet101(weights=models.ResNet101_Weights.IMAGENET1K_V2)
     model.fc = torch.nn.Identity()
     model.eval()
+    model.to(device)
     return model
 
 
