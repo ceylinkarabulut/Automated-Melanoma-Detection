@@ -81,27 +81,3 @@ def enhance_patch(patch, maps):
     return np.clip(enhanced_patch, 0, 255).astype(np.uint8)
 
 
-if __name__ == "__main__":
-    # 1. Veri setinden rastgele bir görüntüyü oku
-    # (Dosya adının klasöründeki bir görselle eşleştiğinden emin ol)
-    sample_image = cv2.imread("data/images/ISIC_0000000.jpg")
-
-    if sample_image is not None:
-        # 2. Test için görüntüyü 224x224 boyutuna getir (patch simülasyonu)
-        test_patch = cv2.resize(sample_image, (224, 224))
-
-        # 3. Haritaları oluştur
-        pca_map = compute_pca_map(test_patch)
-        bri_map = compute_bri_map(test_patch)
-        sat_map = compute_sat_map(test_patch)
-
-        # 4. Görüntüyü iyileştir (Makaledeki gibi üç haritayı da kullanarak)
-        enhanced_result = enhance_patch(test_patch, maps=(pca_map, bri_map, sat_map))
-
-        # 5. Görsel olarak karşılaştırmak için sonuçları diske kaydet
-        cv2.imwrite("test_before.jpg", test_patch)
-        cv2.imwrite("test_after.jpg", enhanced_result)
-
-        print("Test başarılı! Lütfen 'test_before.jpg' ve 'test_after.jpg' dosyalarını açıp gözle kontrol et.")
-    else:
-        print("Hata: Görüntü bulunamadı. Dosya yolunu kontrol et.")
