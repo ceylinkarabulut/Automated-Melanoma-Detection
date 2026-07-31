@@ -39,27 +39,3 @@ def extract_patches(img, mask, n, stride, threshold):
 
     patches = [p.astype(np.uint8) for p in selected]
     return patches
-
-
-def compute_mh_long_side(samples):
-    """
-    ISIC 2017 için MH çözünürlüğü: (ortalama uzun kenar + max uzun kenar) / 2
-    """
-    long_sides = []
-
-    for sample in samples:
-        with Image.open(sample.img_path) as im:
-            width, height = im.size
-
-        if width > height:
-            long_side_val = width
-        else:
-            long_side_val = height
-
-        long_sides.append(long_side_val)
-
-    mean_val = sum(long_sides) / len(long_sides)
-    max_val = max(long_sides)
-
-    mh = (mean_val + max_val) / 2
-    return int(round(mh))
