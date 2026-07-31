@@ -8,3 +8,5 @@ cache/
 *.pth
 *.pkl
 test_preprocessing.py
+test_classifier.py
+

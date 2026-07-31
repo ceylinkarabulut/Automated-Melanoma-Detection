@@ -13,8 +13,9 @@ Planlanan sıra:
 import numpy as np
 
 import config
-from dataset import load_split, balance_train_set
-from preprocessing import rescale, extract_patches
+from augmentation import balance_train_set
+from dataset import load_split
+from preprocessing import rescale_image, extract_patches
 from patch_enhancement import enhance_patch
 from feature_extraction import build_model, build_preprocess, extract_features
 from bovw import train_dictionary, build_histogram
@@ -27,7 +28,7 @@ def images_to_features(triples, model, preprocess):
     image_labels = []
 
     for image, mask, label in triples:
-        image = rescale(image)
+        image = rescale_image(image)
         patches = extract_patches(image, mask=mask)
         enhanced_patches = [enhance_patch(p) for p in patches]
         features = extract_features(enhanced_patches, model, preprocess, config.FEATURE_BATCH_SIZE)
@@ -36,6 +37,21 @@ def images_to_features(triples, model, preprocess):
         image_labels.append(label)
 
     return image_features, image_labels
+
+
+def flatten_patch_features(image_features, image_labels):
+    all_features = np.concatenate(image_features, axis=0)
+    all_patch_labels = np.concatenate([
+        np.full(len(feats), label) for feats, label in zip(image_features, image_labels)
+    ])
+    return all_features, all_patch_labels
+
+
+def build_histograms(image_features, centers):
+    return np.array([
+        build_histogram(f, centers, w_mal=config.MALIGNANT_WEIGHT, w_ben=config.BENIGN_WEIGHT)
+        for f in image_features
+    ])
 
 
 def main():
@@ -50,24 +66,22 @@ def main():
     train_features, train_labels = images_to_features(train_data, model, preprocess)
     test_features, test_labels = images_to_features(test_data, model, preprocess)
 
-    benign_pool = [f for f, l in zip(train_features, train_labels) if l == config.LABEL_BENIGN]
-    malignant_pool = [f for f, l in zip(train_features, train_labels) if l == config.LABEL_MALIGNANT]
+    # train_dictionary artık tüm train patch'lerini + patch-bazlı etiketleri
+    # TEK array olarak bekliyor (ayrımı fonksiyonun içinde kendisi yapıyor!! :3 )
+    all_train_features, all_train_patch_labels = flatten_patch_features(train_features, train_labels)
+    centers = train_dictionary(all_train_features, all_train_patch_labels, k=config.K)
 
-    benign_features = np.concatenate(benign_pool, axis=0)
-    malignant_features = np.concatenate(malignant_pool, axis=0)
-
-    dictionary = train_dictionary(benign_features, malignant_features, k=config.K)
-
-    X_train = np.array([build_histogram(f, dictionary) for f in train_features])
+    X_train = build_histograms(train_features, centers)
     y_train = np.array(train_labels)
 
-    X_test = np.array([build_histogram(f, dictionary) for f in test_features])
+    X_test = build_histograms(test_features, centers)
     y_test = np.array(test_labels)
 
     svm_model = train_svm(X_train, y_train)
 
     y_pred = svm_model.predict(X_test)
-    metrics = compute_metrics(y_test, y_pred)
+    y_scores = svm_model.predict_proba(X_test)[:, 1]  # malignant sınıfının olasılığı
+    metrics = compute_metrics(y_test, y_pred, y_scores)
 
     print(metrics)
 
