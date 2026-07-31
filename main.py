@@ -25,7 +25,7 @@ from patch_enhancement import (
     compute_sat_map,
     enhance_patch,
 )
-from feature_extraction import build_model, build_preprocess, extract_features
+from feature_extraction import build_model, build_preprocess, load_or_extract_features
 from bovw import train_dictionary, build_histogram
 from classifier import train_svm, predict
 from evaluation import compute_metrics
@@ -59,7 +59,8 @@ def images_to_features(triples, model, preprocess):
 
     for image_path, mask_path, label in triples:
         image, mask = load_image_and_mask(image_path, mask_path)
-
+        filename = os.path.basename(image_path)
+        image_id = os.path.splitext(filename)[0]
         image = rescale_image(image, config.MH_LONG_SIDE, is_mask=False)
         mask = rescale_image(mask, config.MH_LONG_SIDE, is_mask=True)
 
@@ -68,7 +69,9 @@ def images_to_features(triples, model, preprocess):
             enhance_patch(p, compute_maps_for_patch(p, config.ENHANCEMENT_MAPS))
             for p in patches
         ]
-        features = extract_features(enhanced_patches, model, preprocess, config.BATCH_SIZE)
+        features = load_or_extract_features(
+            image_id, enhanced_patches, model, preprocess, config.BATCH_SIZE, config.CACHE_DIR, config.ENHANCEMENT_MAPS
+        )
 
         image_features.append(features)
         image_labels.append(label)
@@ -96,7 +99,7 @@ def main():
 
     os.makedirs(config.AUG_DIR, exist_ok=True)
     train_data = balance_train_set(train_data, config.AUG_DIR, config.SEED)
-
+    os.makedirs(config.CACHE_DIR, exist_ok=True)
     model = build_model()
     preprocess = build_preprocess()
 

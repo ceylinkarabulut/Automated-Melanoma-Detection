@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import torch
 import torchvision.models as models
+import os
 from torchvision import transforms
 
 
@@ -51,3 +52,18 @@ def extract_features(patches, model, preprocess, batch_size=32):
             all_features.append(features.cpu().numpy())
 
     return np.concatenate(all_features, axis=0)
+
+def load_or_extract_features(image_id, patches, model, preprocess, batch_size, cache_dir, enhancement_maps):
+    """Cache key = image_id + enhancement kombinasyonu.
+    Varsa diskten oku, yoksa extract_features çağır, diske yaz.
+    -> (patch_sayısı, 2048) array"""
+    maps_str = "_".join(enhancement_maps)
+    filename = image_id + "__" + maps_str + ".npy"
+    cache_path = os.path.join(cache_dir, filename)
+    if os.path.exists(cache_path):
+        features = np.load(cache_path)
+    else:
+        features = extract_features(patches, model, preprocess, batch_size)
+        np.save(cache_path, features)
+
+    return features
