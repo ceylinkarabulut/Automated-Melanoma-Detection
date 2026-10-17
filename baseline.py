@@ -14,6 +14,7 @@ Sonuçlar results/ altına main.py ile aynı formatta yazılır.
 import json
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 import cv2
@@ -91,21 +92,44 @@ def global_cache_name(image_id):
     return f"{image_id}__{config.GLOBAL_BACKBONE}__{layer}__{'tta' if config.GLOBAL_TTA else 'single'}.npy"
 
 
-def global_features(triples, model, preprocess, feature_dim):
+def lesion_crop(image_path, mask_path):
+    """Kırpılmış lezyon (PATCH_SIZE x PATCH_SIZE) diskte cache'lenir: tam çözünürlüklü JPEG'i açmak
+    run'ın en pahalı CPU işi, kırpma backbone ve TTA'dan bağımsız olduğu için bir kez yapılması yeter."""
+    crop_dir = os.path.join(config.CACHE_DIR, "crops")
+    image_id = os.path.splitext(os.path.basename(image_path))[0]
+    crop_path = os.path.join(crop_dir, f"{image_id}__{config.PATCH_SIZE}.png")
+    crop = cv2.imread(crop_path) if os.path.exists(crop_path) else None
+    if crop is None:
+        image, mask = load_image_and_mask(image_path, mask_path)
+        crop = crop_lesion(image, mask, config.PATCH_SIZE)
+        cv2.imwrite(crop_path, crop)
+    return crop
+
+
+def global_features(triples, model, preprocess, feature_dim, chunk=32, workers=8):
     cache_dir = os.path.join(config.CACHE_DIR, "global")
     os.makedirs(cache_dir, exist_ok=True)
+    os.makedirs(os.path.join(config.CACHE_DIR, "crops"), exist_ok=True)
+    cache_paths = [os.path.join(cache_dir, global_cache_name(os.path.splitext(os.path.basename(p))[0]))
+                   for p, _, _ in triples]
+    missing = [i for i, cp in enumerate(cache_paths) if not os.path.exists(cp)]
+
+    # eksikler chunk chunk: kırpmalar thread havuzunda paralel hazırlanır (cv2 GIL'i bırakır),
+    # sonra chunk'ın bütün kırpmaları tek seferde GPU'ya gider
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for start in range(0, len(missing), chunk):
+            idx = missing[start:start + chunk]
+            crops = list(pool.map(lambda i: lesion_crop(triples[i][0], triples[i][1]), idx))
+            n_var = 8 if config.GLOBAL_TTA else 1
+            batch = [v for c in crops for v in (dihedral_variants(c) if config.GLOBAL_TTA else [c])]
+            feats = extract_features(batch, model, preprocess, config.BATCH_SIZE, feature_dim)
+            feats = feats.reshape(len(idx), n_var, -1).mean(axis=1)
+            for i, f in zip(idx, feats):
+                np.save(cache_paths[i], f)
+
     features = []
-    for image_path, mask_path, _ in triples:
-        image_id = os.path.splitext(os.path.basename(image_path))[0]
-        cache_path = os.path.join(cache_dir, global_cache_name(image_id))
-        if os.path.exists(cache_path):
-            f = np.load(cache_path)
-        else:
-            image, mask = load_image_and_mask(image_path, mask_path)
-            crop = crop_lesion(image, mask, config.PATCH_SIZE)
-            crops = dihedral_variants(crop) if config.GLOBAL_TTA else [crop]
-            f = extract_features(crops, model, preprocess, len(crops), feature_dim).mean(axis=0)
-            np.save(cache_path, f)
+    for cache_path in cache_paths:
+        f = np.load(cache_path)
         features.append(f)
     return np.array(features)
 
