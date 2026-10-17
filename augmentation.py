@@ -34,9 +34,6 @@ def balance_train_set(samples: list[tuple[str, str, int]], out_dir: str, seed: i
     for i in range(n_needed):
         source = melanoma_samples[i % len(melanoma_samples)]
         image_path, mask_path, label = source
-        img = cv2.imread(image_path)
-        mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-        aug_img, aug_mask = augment_image(img, mask, seed + i)
         copy_number = i // len(melanoma_samples)
         filename = os.path.basename(image_path)
         image_id = os.path.splitext(filename)[0]
@@ -44,7 +41,12 @@ def balance_train_set(samples: list[tuple[str, str, int]], out_dir: str, seed: i
         new_mask_name = image_id + "_augmented_" + str(copy_number) + "_segmentation.png"
         new_image_path = os.path.join(out_dir, new_image_name)
         new_mask_path = os.path.join(out_dir, new_mask_name)
-        cv2.imwrite(new_image_path, aug_img)
-        cv2.imwrite(new_mask_path, aug_mask)
+        # seed + i deterministik: aynı dosya önceki run'da yazıldıysa tekrar üretmeye gerek yok
+        if not (os.path.exists(new_image_path) and os.path.exists(new_mask_path)):
+            img = cv2.imread(image_path)
+            mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+            aug_img, aug_mask = augment_image(img, mask, seed + i)
+            cv2.imwrite(new_image_path, aug_img)
+            cv2.imwrite(new_mask_path, aug_mask)
         results.append((new_image_path, new_mask_path, 1))
     return samples + results

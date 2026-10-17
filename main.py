@@ -60,17 +60,17 @@ def images_to_features(triples, model, preprocess):
     image_labels = []
 
     for image_path, mask_path, label in triples:
-        image, mask = load_image_and_mask(image_path, mask_path)
         filename = os.path.basename(image_path)
         image_id = os.path.splitext(filename)[0]
-        image = rescale_image(image, config.MH_LONG_SIDE, is_mask=False)
-        mask = rescale_image(mask, config.MH_LONG_SIDE, is_mask=True)
 
-        patches = extract_patches(image, mask, config.PATCH_SIZE, config.STRIDE, config.LESION_THRESHOLD)
-        enhanced_patches = [
-            enhance_patch(p, compute_maps_for_patch(p, config.ENHANCEMENT_MAPS))
-            for p in patches
-        ]
+        def enhanced_patches(image_path=image_path, mask_path=mask_path):
+            # yalnızca cache'te yoksa çağrılır: okuma, rescale ve harita hesabı run'ın en pahalı kısmı
+            image, mask = load_image_and_mask(image_path, mask_path)
+            image = rescale_image(image, config.MH_LONG_SIDE, is_mask=False)
+            mask = rescale_image(mask, config.MH_LONG_SIDE, is_mask=True)
+            patches = extract_patches(image, mask, config.PATCH_SIZE, config.STRIDE, config.LESION_THRESHOLD)
+            return [enhance_patch(p, compute_maps_for_patch(p, config.ENHANCEMENT_MAPS)) for p in patches]
+
         features = load_or_extract_features(
             image_id, enhanced_patches, model, preprocess, config.BATCH_SIZE, config.CACHE_DIR,
             config.ENHANCEMENT_MAPS, config.FEATURE_LAYER
