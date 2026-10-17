@@ -60,10 +60,11 @@ def extract_features(patches, model, preprocess, batch_size=32, feature_dim=conf
 
     return np.concatenate(all_features, axis=0)
 
-def load_or_extract_features(image_id, patches, model, preprocess, batch_size, cache_dir, enhancement_maps,
+def load_or_extract_features(image_id, get_patches, model, preprocess, batch_size, cache_dir, enhancement_maps,
                              feature_layer=config.FEATURE_LAYER):
     """Cache key = image_id + enhancement kombinasyonu + feature katmanı.
-    Varsa diskten oku, yoksa extract_features çağır, diske yaz.
+    Varsa diskten oku, yoksa get_patches() ile patch'leri üret, extract_features çağır, diske yaz.
+    get_patches bir fonksiyon: cache varsa patch çıkarma ve harita hesabı hiç yapılmaz.
     Katman key'de olduğu için 2048 ve 1000 boyutlu cache'ler birbirine karışmaz.
     -> (patch_sayısı, feature_dim) array"""
     maps_str = "_".join(enhancement_maps) if enhancement_maps else "nomap"
@@ -73,7 +74,7 @@ def load_or_extract_features(image_id, patches, model, preprocess, batch_size, c
     if os.path.exists(cache_path):
         features = np.load(cache_path)
     else:
-        features = extract_features(patches, model, preprocess, batch_size, feature_dim)
+        features = extract_features(get_patches(), model, preprocess, batch_size, feature_dim)
         np.save(cache_path, features)
 
     return features

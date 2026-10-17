@@ -51,8 +51,8 @@ KMEANS_BATCH_SIZE = 1024
 SVM_TUNE       = True
 SVM_CV_FOLDS   = 10
 SVM_CV_SCORING = "balanced_accuracy"
-SVM_C_GRID     = (0.1, 1, 10, 100, 1000)
-SVM_GAMMA_GRID = ("scale", 0.01, 0.1, 1, 10)
+SVM_C_GRID     = (0.1, 1, 10, 100, 1000, 10000, 100000)
+SVM_GAMMA_GRID = ("scale", 0.0001, 0.001, 0.01, 0.1, 1)
 SVM_C          = 1.0
 SVM_GAMMA      = "scale"
 
