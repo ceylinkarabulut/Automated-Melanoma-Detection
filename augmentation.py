@@ -18,7 +18,8 @@ def augment_image(img: np.ndarray, mask: np.ndarray, seed: int) -> tuple[np.ndar
     M[0, 2] += shift_x * width
     M[1, 2] += shift_y * height
     aug_img = cv2.warpAffine(img, M, (width, height))
-    aug_mask = cv2.warpAffine(mask, M, (width, height))
+    # mask binary kalmalı: lineer interpolasyon kenarlarda 0-255 arası ara değerler üretir
+    aug_mask = cv2.warpAffine(mask, M, (width, height), flags=cv2.INTER_NEAREST)
     return aug_img, aug_mask
 
 
