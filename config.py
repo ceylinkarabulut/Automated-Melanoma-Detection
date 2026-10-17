@@ -39,6 +39,12 @@ FEATURE_DIMS  = {"avgpool": 2048, "logits": 1000}
 FEATURE_DIM   = FEATURE_DIMS[FEATURE_LAYER]
 BATCH_SIZE    = 64
 
+# ---------- Tüm lezyon (baseline.py global / fusion) ----------
+# resnet101 | resnet50 | densenet201 | efficientnet_v2_m | convnext_base
+GLOBAL_BACKBONE = "resnet101"
+GLOBAL_TTA      = False     # True: 8 döndürme/yansıtma varyantının feature ortalaması
+TUNE_THRESHOLD  = True      # karar eşiğini train'in out-of-fold skorlarıyla seç (balanced accuracy)
+
 # ---------- BoVW ----------
 K_CLUSTERS        = 1000                     # sınıf başına 500
 MALIGNANT_WEIGHT  = 10
