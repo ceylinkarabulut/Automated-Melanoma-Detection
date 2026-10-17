@@ -2,8 +2,9 @@
 
     python baseline.py global   -> lezyonun bounding box'ı kırpılır, tüm görüntü ResNet'ten tek vektör olarak geçer
     python baseline.py meanpool -> main.py'nin cache'indeki patch feature'larının ortalaması (BoVW yerine)
+    python baseline.py fusion   -> global vektör + BoVW histogramı yan yana (ikisi de l2 normalize)
 
-meanpool için önce aynı FEATURE_LAYER / ENHANCEMENT_MAPS ile main.py çalışmış olmalı.
+meanpool ve fusion için önce aynı FEATURE_LAYER / ENHANCEMENT_MAPS ile main.py çalışmış olmalı.
 Sonuçlar results/ altına main.py ile aynı formatta yazılır.
 """
 
@@ -21,7 +22,8 @@ from classifier import tune_svm, predict
 from dataset import load_split
 from evaluation import compute_metrics
 from feature_extraction import build_model, build_preprocess, extract_features
-from main import load_image_and_mask, source_image_ids
+from bovw import train_dictionary
+from main import load_image_and_mask, source_image_ids, flatten_patch_features, build_histograms
 
 CROP_MARGIN = 0.1   # bounding box'ın her yönüne eklenen pay (kenar uzunluğuna oranla)
 
@@ -60,7 +62,12 @@ def global_features(triples, model, preprocess):
     return np.array(features)
 
 
-def meanpool_features(triples):
+def l2(X):
+    return X / np.maximum(np.linalg.norm(X, axis=1, keepdims=True), 1e-8)
+
+
+def cached_patch_features(triples):
+    """main.py'nin cache'inden her görüntünün (patch_sayısı, dim) feature'ları."""
     maps_str = "_".join(config.ENHANCEMENT_MAPS) if config.ENHANCEMENT_MAPS else "nomap"
     features = []
     for image_path, _, _ in triples:
@@ -68,10 +75,14 @@ def meanpool_features(triples):
         cache_path = os.path.join(config.CACHE_DIR, f"{image_id}__{maps_str}__{config.FEATURE_LAYER}.npy")
         if not os.path.exists(cache_path):
             raise FileNotFoundError(f"{cache_path} yok: önce aynı ayarlarla main.py çalıştırılmalı")
-        f = np.load(cache_path)
-        features.append(f.mean(axis=0) if len(f) else np.zeros(config.FEATURE_DIM, dtype=np.float32))
-    X = np.array(features)
-    return X / np.maximum(np.linalg.norm(X, axis=1, keepdims=True), 1e-8)
+        features.append(np.load(cache_path))
+    return features
+
+
+def meanpool_features(triples):
+    X = np.array([f.mean(axis=0) if len(f) else np.zeros(config.FEATURE_DIM, dtype=np.float32)
+                  for f in cached_patch_features(triples)])
+    return l2(X)
 
 
 def main(mode):
@@ -80,18 +91,24 @@ def main(mode):
     os.makedirs(config.AUG_DIR, exist_ok=True)
     train_data = balance_train_set(train_data, config.AUG_DIR, config.SEED)
 
-    if mode == "global":
+    y_train = np.array([label for _, _, label in train_data])
+
+    if mode in ("global", "fusion"):
         model, preprocess = build_model(), build_preprocess()
-        X_train = global_features(train_data, model, preprocess)
-        X_test = global_features(test_data, model, preprocess)
-        X_train /= np.maximum(np.linalg.norm(X_train, axis=1, keepdims=True), 1e-8)
-        X_test /= np.maximum(np.linalg.norm(X_test, axis=1, keepdims=True), 1e-8)
+        X_train = l2(global_features(train_data, model, preprocess))
+        X_test = l2(global_features(test_data, model, preprocess))
+        if mode == "fusion":
+            # BoVW sözlüğü main.py'deki gibi SADECE train patch'leriyle kurulur
+            train_patches, test_patches = cached_patch_features(train_data), cached_patch_features(test_data)
+            all_feats, all_labels = flatten_patch_features(train_patches, list(y_train))
+            centers = train_dictionary(all_feats, all_labels, k=config.K_CLUSTERS)
+            X_train = np.hstack([X_train, build_histograms(train_patches, centers)])
+            X_test = np.hstack([X_test, build_histograms(test_patches, centers)])
     elif mode == "meanpool":
         X_train, X_test = meanpool_features(train_data), meanpool_features(test_data)
     else:
-        raise ValueError("mode: global | meanpool")
+        raise ValueError("mode: global | meanpool | fusion")
 
-    y_train = np.array([label for _, _, label in train_data])
     y_test = np.array([label for _, _, label in test_data])
 
     svm_model, svm_params, cv_score = tune_svm(
@@ -105,14 +122,14 @@ def main(mode):
 
     os.makedirs(config.RESULTS_DIR, exist_ok=True)
     maps_str = "_".join(config.ENHANCEMENT_MAPS) if config.ENHANCEMENT_MAPS else "nomap"
-    tag = maps_str if mode == "meanpool" else "crop"
+    tag = {"meanpool": maps_str, "global": "crop", "fusion": "crop+" + maps_str}[mode]
     path = os.path.join(config.RESULTS_DIR, f"{datetime.now():%Y%m%d_%H%M%S}__baseline_{mode}__{config.FEATURE_LAYER}__{tag}.json")
     with open(path, "w") as f:
         json.dump({
             "time": datetime.now().isoformat(timespec="seconds"),
             "baseline": mode,
             "feature_layer": config.FEATURE_LAYER,
-            "enhancement_maps": list(config.ENHANCEMENT_MAPS) if mode == "meanpool" else [],
+            "enhancement_maps": list(config.ENHANCEMENT_MAPS) if mode != "global" else [],
             "svm_params": svm_params,
             "svm_cv_scoring": config.SVM_CV_SCORING,
             "svm_cv_score": cv_score,
