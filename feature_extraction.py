@@ -7,12 +7,19 @@ import torchvision.models as models
 import os
 from torchvision import transforms
 
+import config
 
-def build_model():
-    """ResNet-101 pretrained, fc=Identity(), eval(), GPU varsa GPU'da -> model"""
+
+def build_model(feature_layer=config.FEATURE_LAYER):
+    """ResNet-101 pretrained, eval(), GPU varsa GPU'da -> model
+    feature_layer="avgpool": fc=Identity(), çıktı 2048 boyutlu
+    feature_layer="logits":  fc olduğu gibi kalır, çıktı softmax öncesi 1000 boyutlu"""
+    if feature_layer not in config.FEATURE_DIMS:
+        raise ValueError(f"Bilinmeyen FEATURE_LAYER: {feature_layer}")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = models.resnet101(weights=models.ResNet101_Weights.IMAGENET1K_V1)
-    model.fc = torch.nn.Identity()
+    if feature_layer == "avgpool":
+        model.fc = torch.nn.Identity()
     model.eval()
     model.to(device)
     return model
@@ -27,12 +34,12 @@ def build_preprocess():
     return preprocess
 
 
-def extract_features(patches, model, preprocess, batch_size=32):
-    """Batch'li forward pass -> (len(patches), 2048) numpy array"""
+def extract_features(patches, model, preprocess, batch_size=32, feature_dim=config.FEATURE_DIM):
+    """Batch'li forward pass -> (len(patches), feature_dim) numpy array"""
     device = next(model.parameters()).device
 
     if len(patches) == 0:
-        return np.empty((0, 2048), dtype=np.float32)
+        return np.empty((0, feature_dim), dtype=np.float32)
 
     all_features = []
     with torch.no_grad():
@@ -53,17 +60,20 @@ def extract_features(patches, model, preprocess, batch_size=32):
 
     return np.concatenate(all_features, axis=0)
 
-def load_or_extract_features(image_id, patches, model, preprocess, batch_size, cache_dir, enhancement_maps):
-    """Cache key = image_id + enhancement kombinasyonu.
+def load_or_extract_features(image_id, patches, model, preprocess, batch_size, cache_dir, enhancement_maps,
+                             feature_layer=config.FEATURE_LAYER):
+    """Cache key = image_id + enhancement kombinasyonu + feature katmanı.
     Varsa diskten oku, yoksa extract_features çağır, diske yaz.
-    -> (patch_sayısı, 2048) array"""
-    maps_str = "_".join(enhancement_maps)
-    filename = image_id + "__" + maps_str + ".npy"
+    Katman key'de olduğu için 2048 ve 1000 boyutlu cache'ler birbirine karışmaz.
+    -> (patch_sayısı, feature_dim) array"""
+    maps_str = "_".join(enhancement_maps) if enhancement_maps else "nomap"
+    filename = image_id + "__" + maps_str + "__" + feature_layer + ".npy"
     cache_path = os.path.join(cache_dir, filename)
+    feature_dim = config.FEATURE_DIMS[feature_layer]
     if os.path.exists(cache_path):
         features = np.load(cache_path)
     else:
-        features = extract_features(patches, model, preprocess, batch_size)
+        features = extract_features(patches, model, preprocess, batch_size, feature_dim)
         np.save(cache_path, features)
 
     return features

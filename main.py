@@ -10,7 +10,9 @@ Planlanan sıra:
     7. compute_metrics SADECE test üzerinde çalıştırılır
 """
 
+import json
 import os
+from datetime import datetime
 
 import cv2
 import numpy as np
@@ -27,7 +29,7 @@ from patch_enhancement import (
 )
 from feature_extraction import build_model, build_preprocess, load_or_extract_features
 from bovw import train_dictionary, build_histogram
-from classifier import train_svm, predict
+from classifier import train_svm, tune_svm, predict
 from evaluation import compute_metrics
 
 # config.ENHANCEMENT_MAPS içindeki isimleri gerçek harita fonksiyonlarına bağlar
@@ -70,7 +72,8 @@ def images_to_features(triples, model, preprocess):
             for p in patches
         ]
         features = load_or_extract_features(
-            image_id, enhanced_patches, model, preprocess, config.BATCH_SIZE, config.CACHE_DIR, config.ENHANCEMENT_MAPS
+            image_id, enhanced_patches, model, preprocess, config.BATCH_SIZE, config.CACHE_DIR,
+            config.ENHANCEMENT_MAPS, config.FEATURE_LAYER
         )
 
         image_features.append(features)
@@ -86,6 +89,40 @@ def flatten_patch_features(image_features, image_labels):
     return all_features, all_patch_labels
 
 
+def source_image_ids(triples):
+    """Augment edilmiş kopyayı kaynak görüntüsünün id'sine eşler (CV grupları için).
+    ISIC_0000001_augmented_2.jpg -> ISIC_0000001"""
+    ids = []
+    for image_path, _, _ in triples:
+        image_id = os.path.splitext(os.path.basename(image_path))[0]
+        ids.append(image_id.split("_augmented_")[0])
+    return np.array(ids)
+
+
+def save_run(metrics, svm_params, cv_score):
+    """Run'ın ayarlarını ve metriklerini results/ altına json olarak yazar,
+    böylece ablation run'ları yan yana karşılaştırılabilir."""
+    os.makedirs(config.RESULTS_DIR, exist_ok=True)
+    run = {
+        "time": datetime.now().isoformat(timespec="seconds"),
+        "feature_layer": config.FEATURE_LAYER,
+        "enhancement_maps": list(config.ENHANCEMENT_MAPS),
+        "k_clusters": config.K_CLUSTERS,
+        "malignant_weight": config.MALIGNANT_WEIGHT,
+        "svm_tuned": config.SVM_TUNE,
+        "svm_params": svm_params,
+        "svm_cv_scoring": config.SVM_CV_SCORING if config.SVM_TUNE else None,
+        "svm_cv_score": cv_score,
+        "metrics": metrics,
+    }
+    maps_str = "_".join(config.ENHANCEMENT_MAPS) if config.ENHANCEMENT_MAPS else "nomap"
+    filename = f"{datetime.now():%Y%m%d_%H%M%S}__{config.FEATURE_LAYER}__{maps_str}.json"
+    path = os.path.join(config.RESULTS_DIR, filename)
+    with open(path, "w") as f:
+        json.dump(run, f, indent=2, default=str)
+    return path
+
+
 def build_histograms(image_features, centers):
     return np.array([
         build_histogram(f, centers, w_mal=config.MALIGNANT_WEIGHT, w_ben=config.BENIGN_WEIGHT)
@@ -94,8 +131,8 @@ def build_histograms(image_features, centers):
 
 
 def main():
-    train_data = load_split(config.TRAIN_CSV, config.IMAGE_DIR, config.MASK_DIR)
-    test_data = load_split(config.TEST_CSV, config.IMAGE_DIR, config.MASK_DIR)
+    train_data = load_split(config.TRAIN_CSV, config.TRAIN_IMAGE_DIR, config.TRAIN_MASK_DIR)
+    test_data = load_split(config.TEST_CSV, config.TEST_IMAGE_DIR, config.TEST_MASK_DIR)
 
     os.makedirs(config.AUG_DIR, exist_ok=True)
     train_data = balance_train_set(train_data, config.AUG_DIR, config.SEED)
@@ -117,12 +154,23 @@ def main():
     X_test = build_histograms(test_features, centers)
     y_test = np.array(test_labels)
 
-    svm_model = train_svm(X_train, y_train, config.SVM_C, config.SVM_GAMMA)
+    if config.SVM_TUNE:
+        groups = source_image_ids(train_data)
+        svm_model, svm_params, cv_score = tune_svm(
+            X_train, y_train, groups, config.SVM_C_GRID, config.SVM_GAMMA_GRID,
+            config.SVM_CV_FOLDS, config.SVM_CV_SCORING, config.SEED
+        )
+        print(f"En iyi SVM: {svm_params} (CV {config.SVM_CV_SCORING} = {cv_score:.4f})")
+    else:
+        svm_params = {"C": config.SVM_C, "gamma": config.SVM_GAMMA}
+        svm_model = train_svm(X_train, y_train, config.SVM_C, config.SVM_GAMMA, config.SEED)
+        cv_score = None
 
     y_pred, y_scores = predict(svm_model, X_test)
     metrics = compute_metrics(y_test, y_pred, y_scores)
 
     print(metrics)
+    print(f"Sonuçlar kaydedildi: {save_run(metrics, svm_params, cv_score)}")
 
 
 if __name__ == "__main__":
