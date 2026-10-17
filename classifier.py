@@ -1,6 +1,8 @@
 """SVM sınıflandırıcı."""
 
-from sklearn.model_selection import GridSearchCV, StratifiedGroupKFold
+import numpy as np
+from sklearn.metrics import balanced_accuracy_score
+from sklearn.model_selection import GridSearchCV, StratifiedGroupKFold, cross_val_predict
 from sklearn.svm import SVC
 
 
@@ -31,6 +33,19 @@ def tune_svm(X, y, groups, c_grid, gamma_grid, n_folds, scoring, random_state):
     best = search.best_params_
     model = train_svm(X, y, best["C"], best["gamma"], random_state)
     return model, best, search.best_score_
+
+
+def tune_threshold(X, y, groups, C, gamma, n_folds, random_state):
+    """SVM karar fonksiyonu için eşik: train üzerinde out-of-fold decision_function
+    skorlarından balanced accuracy'yi en yükseğe çıkaran değer. Test seti hiç kullanılmaz.
+    -> (eşik, o eşikteki OOF balanced accuracy)"""
+    cv = StratifiedGroupKFold(n_splits=n_folds, shuffle=True, random_state=random_state)
+    oof = cross_val_predict(SVC(kernel='rbf', C=C, gamma=gamma), X, y, groups=groups, cv=cv,
+                            method="decision_function", n_jobs=-1)
+    candidates = np.unique(oof)
+    scores = [balanced_accuracy_score(y, (oof >= t).astype(int)) for t in candidates]
+    best = int(np.argmax(scores))
+    return float(candidates[best]), float(scores[best])
 
 
 def predict(model, X):

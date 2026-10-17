@@ -4,6 +4,9 @@
     python baseline.py meanpool -> main.py'nin cache'indeki patch feature'larının ortalaması (BoVW yerine)
     python baseline.py fusion   -> global vektör + BoVW histogramı yan yana (ikisi de l2 normalize)
 
+global/fusion: backbone config.GLOBAL_BACKBONE, TTA config.GLOBAL_TTA.
+config.TUNE_THRESHOLD: karar eşiği train'in out-of-fold skorlarıyla seçilir, iki sonuç da kaydedilir.
+
 meanpool ve fusion için önce aynı FEATURE_LAYER / ENHANCEMENT_MAPS ile main.py çalışmış olmalı.
 Sonuçlar results/ altına main.py ile aynı formatta yazılır.
 """
@@ -15,10 +18,12 @@ from datetime import datetime
 
 import cv2
 import numpy as np
+import torch
+import torchvision.models as models
 
 import config
 from augmentation import balance_train_set
-from classifier import tune_svm, predict
+from classifier import tune_svm, tune_threshold, predict
 from dataset import load_split
 from evaluation import compute_metrics
 from feature_extraction import build_model, build_preprocess, extract_features
@@ -44,19 +49,62 @@ def crop_lesion(image, mask, size):
     return cv2.resize(crop, (size, size), interpolation=cv2.INTER_AREA)
 
 
-def global_features(triples, model, preprocess):
+def build_global_model(name):
+    """torchvision backbone, sınıflandırma katmanı Identity -> (model, feature_dim)
+    resnet101 main.py ile aynı modeli (FEATURE_LAYER'a göre) kullanır."""
+    if name == "resnet101":
+        return build_model(), config.FEATURE_DIM
+    if name == "resnet50":
+        model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V2)
+        model.fc, dim = torch.nn.Identity(), 2048
+    elif name == "densenet201":
+        model = models.densenet201(weights=models.DenseNet201_Weights.IMAGENET1K_V1)
+        model.classifier, dim = torch.nn.Identity(), 1920
+    elif name == "efficientnet_v2_m":
+        model = models.efficientnet_v2_m(weights=models.EfficientNet_V2_M_Weights.IMAGENET1K_V1)
+        model.classifier, dim = torch.nn.Identity(), 1280
+    elif name == "convnext_base":
+        model = models.convnext_base(weights=models.ConvNeXt_Base_Weights.IMAGENET1K_V1)
+        model.classifier[2], dim = torch.nn.Identity(), 1024
+    else:
+        raise ValueError(f"Bilinmeyen GLOBAL_BACKBONE: {name}")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.eval()
+    model.to(device)
+    return model, dim
+
+
+def dihedral_variants(img):
+    """4 döndürme x yansıtma = 8 varyant (dermoskopide lezyonun yönü anlamsız)."""
+    variants = []
+    for flip in (img, cv2.flip(img, 1)):
+        for k in range(4):
+            variants.append(np.ascontiguousarray(np.rot90(flip, k)))
+    return variants
+
+
+def global_cache_name(image_id):
+    # resnet101 tek görüntü, ilk global run'ın cache adını korur
+    if config.GLOBAL_BACKBONE == "resnet101" and not config.GLOBAL_TTA:
+        return f"{image_id}__{config.FEATURE_LAYER}.npy"
+    layer = config.FEATURE_LAYER if config.GLOBAL_BACKBONE == "resnet101" else "pool"
+    return f"{image_id}__{config.GLOBAL_BACKBONE}__{layer}__{'tta' if config.GLOBAL_TTA else 'single'}.npy"
+
+
+def global_features(triples, model, preprocess, feature_dim):
     cache_dir = os.path.join(config.CACHE_DIR, "global")
     os.makedirs(cache_dir, exist_ok=True)
     features = []
     for image_path, mask_path, _ in triples:
         image_id = os.path.splitext(os.path.basename(image_path))[0]
-        cache_path = os.path.join(cache_dir, f"{image_id}__{config.FEATURE_LAYER}.npy")
+        cache_path = os.path.join(cache_dir, global_cache_name(image_id))
         if os.path.exists(cache_path):
             f = np.load(cache_path)
         else:
             image, mask = load_image_and_mask(image_path, mask_path)
             crop = crop_lesion(image, mask, config.PATCH_SIZE)
-            f = extract_features([crop], model, preprocess, 1)[0]
+            crops = dihedral_variants(crop) if config.GLOBAL_TTA else [crop]
+            f = extract_features(crops, model, preprocess, len(crops), feature_dim).mean(axis=0)
             np.save(cache_path, f)
         features.append(f)
     return np.array(features)
@@ -94,9 +142,9 @@ def main(mode):
     y_train = np.array([label for _, _, label in train_data])
 
     if mode in ("global", "fusion"):
-        model, preprocess = build_model(), build_preprocess()
-        X_train = l2(global_features(train_data, model, preprocess))
-        X_test = l2(global_features(test_data, model, preprocess))
+        (model, feature_dim), preprocess = build_global_model(config.GLOBAL_BACKBONE), build_preprocess()
+        X_train = l2(global_features(train_data, model, preprocess, feature_dim))
+        X_test = l2(global_features(test_data, model, preprocess, feature_dim))
         if mode == "fusion":
             # BoVW sözlüğü main.py'deki gibi SADECE train patch'leriyle kurulur
             train_patches, test_patches = cached_patch_features(train_data), cached_patch_features(test_data)
@@ -111,8 +159,9 @@ def main(mode):
 
     y_test = np.array([label for _, _, label in test_data])
 
+    groups = source_image_ids(train_data)
     svm_model, svm_params, cv_score = tune_svm(
-        X_train, y_train, source_image_ids(train_data), config.SVM_C_GRID, config.SVM_GAMMA_GRID,
+        X_train, y_train, groups, config.SVM_C_GRID, config.SVM_GAMMA_GRID,
         config.SVM_CV_FOLDS, config.SVM_CV_SCORING, config.SEED
     )
     print(f"En iyi SVM: {svm_params} (CV {config.SVM_CV_SCORING} = {cv_score:.4f})")
@@ -120,20 +169,34 @@ def main(mode):
     metrics = compute_metrics(y_test, y_pred, y_scores)
     print(metrics)
 
+    threshold = threshold_metrics = None
+    if config.TUNE_THRESHOLD:
+        threshold, oof_score = tune_threshold(X_train, y_train, groups, svm_params["C"], svm_params["gamma"],
+                                              config.SVM_CV_FOLDS, config.SEED)
+        y_pred_t = (svm_model.decision_function(X_test) >= threshold).astype(int)
+        threshold_metrics = compute_metrics(y_test, y_pred_t, y_scores)
+        print(f"Eşik {threshold:.4f} (OOF balanced accuracy = {oof_score:.4f}): {threshold_metrics}")
+
     os.makedirs(config.RESULTS_DIR, exist_ok=True)
     maps_str = "_".join(config.ENHANCEMENT_MAPS) if config.ENHANCEMENT_MAPS else "nomap"
-    tag = {"meanpool": maps_str, "global": "crop", "fusion": "crop+" + maps_str}[mode]
+    crop_tag = "crop" if config.GLOBAL_BACKBONE == "resnet101" else f"crop-{config.GLOBAL_BACKBONE}"
+    crop_tag += "-tta" if config.GLOBAL_TTA else ""
+    tag = {"meanpool": maps_str, "global": crop_tag, "fusion": crop_tag + "+" + maps_str}[mode]
     path = os.path.join(config.RESULTS_DIR, f"{datetime.now():%Y%m%d_%H%M%S}__baseline_{mode}__{config.FEATURE_LAYER}__{tag}.json")
     with open(path, "w") as f:
         json.dump({
             "time": datetime.now().isoformat(timespec="seconds"),
             "baseline": mode,
             "feature_layer": config.FEATURE_LAYER,
+            "backbone": config.GLOBAL_BACKBONE if mode != "meanpool" else "resnet101",
+            "tta": config.GLOBAL_TTA if mode != "meanpool" else False,
             "enhancement_maps": list(config.ENHANCEMENT_MAPS) if mode != "global" else [],
             "svm_params": svm_params,
             "svm_cv_scoring": config.SVM_CV_SCORING,
             "svm_cv_score": cv_score,
             "metrics": metrics,
+            "threshold": threshold,
+            "metrics_tuned_threshold": threshold_metrics,
         }, f, indent=2, default=str)
     print(f"Sonuçlar kaydedildi: {path}")
 
