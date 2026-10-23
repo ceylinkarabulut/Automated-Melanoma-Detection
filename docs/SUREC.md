@@ -27,7 +27,7 @@ Bu doküman projenin baştan bugüne nasıl ilerlediğini, kodun ne yaptığın�
 | Ne | Nerede | İçerik |
 |---|---|---|
 | Eski versiyon (v1) | `main` branch'i | Makalenin yönteminin ilk çalışan hali: tek görüntü klasörü, sabit SVM parametreleri, 2048 boyutlu özellik. |
-| Güncel versiyon | `claude/project-thread-u8itds` branch'i | `improve-results` (PR #6) üzerindeki tüm geliştirmeler + `results/` altındaki deney sonuçları + bu doküman. |
+| Güncel versiyon | `guncel-surum` branch'i | `improve-results` (PR #6) üzerindeki tüm geliştirmeler + `results/` altındaki deney sonuçları + bu doküman. |
 | Eski çalışma dalları | `feature/*` | Ekibin modül bazlı çalıştığı dallar; hepsi `main`'e birleştirilmiş durumda. |
 
 `main` bilerek değiştirilmedi. Eski versiyona dönmek için `git checkout main` yeterli. Eski versiyonun son commit'i: `3484221`.
