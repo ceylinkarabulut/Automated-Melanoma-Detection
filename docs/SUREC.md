@@ -26,11 +26,11 @@ Bu doküman projenin baştan bugüne nasıl ilerlediğini, kodun ne yaptığın�
 
 | Ne | Nerede | İçerik |
 |---|---|---|
-| Eski versiyon (v1) | `main` branch'i ve `v1.0-bovw` etiketi | Makalenin yönteminin ilk çalışan hali: tek görüntü klasörü, sabit SVM parametreleri, 2048 boyutlu özellik. |
+| Eski versiyon (v1) | `main` branch'i | Makalenin yönteminin ilk çalışan hali: tek görüntü klasörü, sabit SVM parametreleri, 2048 boyutlu özellik. |
 | Güncel versiyon | `claude/project-thread-u8itds` branch'i | `improve-results` (PR #6) üzerindeki tüm geliştirmeler + `results/` altındaki deney sonuçları + bu doküman. |
 | Eski çalışma dalları | `feature/*` | Ekibin modül bazlı çalıştığı dallar; hepsi `main`'e birleştirilmiş durumda. |
 
-`main` bilerek değiştirilmedi. Eski versiyona dönmek için `git checkout v1.0-bovw` yeterli.
+`main` bilerek değiştirilmedi. Eski versiyona dönmek için `git checkout main` yeterli. Eski versiyonun son commit'i: `3484221`.
 
 ## 3. Kod ne yapıyor
 
@@ -88,7 +88,7 @@ Veri klasör yapısı için `README.md` dosyasına bakın. `data/` ve `cache/` r
 5. **Özellik önbelleği eklendi** (`load_or_extract_features`).
 6. O dönemin çalışma notları `docs/arsiv/2026-08-27/` altında duruyor.
 
-Bu noktadaki kod `main` branch'inde ve `v1.0-bovw` etiketinde.
+Bu noktadaki kod `main` branch'inde (commit `3484221`).
 
 ### Ekim 2026: Sonuçları geliştirme (PR #6)
 
