@@ -146,6 +146,20 @@ Tüm sayılar gerçek ISIC 2017 test setinde (117 melanom / 483 benign), 17 Ekim
 
 ## 7. Sonraki adımlar
 
+### Hocamızın 23 Ekim isteği: tüm lezyonu haritalarla güçlendirmek
+
+- [ ] BRI ve diğer haritaları (PCA, SAT) patch'ler yerine kırpılmış lezyonun tamamına uygulamak.
+- [ ] Bu güçlendirilmiş lezyon görüntüsüyle tüm lezyon yöntemini (`baseline.py global`) tekrar çalıştırmak.
+- [ ] Sonucu haritasız tüm lezyon (AUC 0.815) ile karşılaştırmak; tek tek ve birlikte (BRI, PCA×BRI, PCA×BRI×SAT) denemek.
+
+### 6 Kasım 2026'ya kadar: projeyi modernize etmek ve araştırma
+
+- [ ] Melanom tespiti üzerine yeni makaleleri okumak ve güncel yöntemleri araştırmak.
+- [ ] Transformer'ların ne olduğunu öğrenmek (hocamızın isteği): dikkat (attention) mekanizması, Vision Transformer (ViT) ve görüntü sınıflandırmada kullanımı.
+- [ ] Okunan makalelerden ve transformer araştırmasından projeyi modernize etmek için uygulanabilecek fikirleri çıkarmak.
+
+### Devam eden deneyler
+
 - [ ] Daha güçlü omurga ağlar: ConvNeXt-Base, EfficientNetV2-M, DenseNet-201 (kod hazır, sadece `GLOBAL_BACKBONE` değiştirilip çalıştırılması gerekiyor).
 - [ ] En iyi iki ağın vektörlerini birleştirmek.
 - [ ] Sonuçları raporda BoVW ile yan yana sunmak (ablation tablosu).
