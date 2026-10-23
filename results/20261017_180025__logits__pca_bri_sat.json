@@ -1,0 +1,32 @@
+{
+  "time": "2026-10-17T18:00:25",
+  "feature_layer": "logits",
+  "enhancement_maps": [
+    "pca",
+    "bri",
+    "sat"
+  ],
+  "k_clusters": 1000,
+  "malignant_weight": 10,
+  "svm_tuned": true,
+  "svm_params": {
+    "C": 1000,
+    "gamma": 0.01
+  },
+  "svm_cv_scoring": "balanced_accuracy",
+  "svm_cv_score": 0.764189391448216,
+  "metrics": {
+    "TP": 80,
+    "TN": 281,
+    "FP": 202,
+    "FN": 37,
+    "ACC": 0.6016666666666667,
+    "SENS": 0.6837606837606838,
+    "SPEC": 0.5817805383022774,
+    "PPV": 0.28368794326241137,
+    "NPV": 0.8836477987421384,
+    "DC": 0.40100250626566414,
+    "ROC_AUC": 0.6790270920705703,
+    "PR_AUC": 0.3269291033996815
+  }
+}

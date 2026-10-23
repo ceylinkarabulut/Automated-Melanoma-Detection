@@ -2,6 +2,8 @@
 
 A classical computer-vision pipeline for classifying skin lesion images as **benign** or **malignant (melanoma)**, built around patch-level deep features and a weighted Bag-of-Visual-Words (BoVW) representation. Built as a team project (see [Contributors](#contributors)).
 
+For the full project history, experiments, results and decisions (in Turkish), see [docs/SUREC.md](docs/SUREC.md). The original paper-reproduction version is preserved on `main` and tagged `v1.0-bovw`.
+
 ## Pipeline
 
 1. **Load split** — read image/mask pairs and labels from a train/test CSV (`dataset.py`).

@@ -1,0 +1,31 @@
+{
+  "time": "2026-10-17T19:50:32",
+  "feature_layer": "avgpool",
+  "enhancement_maps": [
+    "pca",
+    "bri"
+  ],
+  "k_clusters": 1000,
+  "malignant_weight": 10,
+  "svm_tuned": true,
+  "svm_params": {
+    "C": 100000,
+    "gamma": 0.001
+  },
+  "svm_cv_scoring": "balanced_accuracy",
+  "svm_cv_score": 0.7598814988363313,
+  "metrics": {
+    "TP": 62,
+    "TN": 338,
+    "FP": 145,
+    "FN": 55,
+    "ACC": 0.6666666666666666,
+    "SENS": 0.5299145299145299,
+    "SPEC": 0.6997929606625258,
+    "PPV": 0.2995169082125604,
+    "NPV": 0.8600508905852418,
+    "DC": 0.38271604938271603,
+    "ROC_AUC": 0.648572844225018,
+    "PR_AUC": 0.2867760525642027
+  }
+}
